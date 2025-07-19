@@ -840,6 +840,7 @@ static void add_to_queue(u8* fname, u32 len, u8 passed_det) {
   q->depth        = cur_depth + 1;
   q->passed_det   = passed_det;
   calculate_file_md5(fname, q->file_checksum);
+  q->fuzz_times_since_last_interest = 0;
 
   if (q->depth > max_depth) max_depth = q->depth;
 
