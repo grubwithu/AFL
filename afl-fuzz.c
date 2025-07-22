@@ -66,7 +66,7 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 #include <sys/file.h>
-#include <openssl/md5.h>
+#include <openssl/sha.h>
 
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined (__OpenBSD__)
 #  include <sys/sysctl.h>
@@ -263,7 +263,7 @@ struct queue_entry {
   u8* trace_mini;                     /* Trace bytes, if kept             */
   u32 tc_ref;                         /* Trace bytes ref count            */
 
-  u8  file_checksum[MD5_DIGEST_LENGTH];
+  u8  file_checksum[SHA_DIGEST_LENGTH];
   u32 fuzz_times_since_last_interest;
 
   struct queue_entry *next,           /* Next element, if any             */
@@ -802,35 +802,31 @@ static void mark_as_redundant(struct queue_entry* q, u8 state) {
 
 }
 
-
-/* Append new test case to the queue. */
-static int calculate_file_md5(u8* fname, u8* md5) {
+static int calculate_file_sha1(u8* fname, u8* sha1) {
   FILE *file = fopen(fname, "rb");
   if (!file) {
       printf("Failed to open this file: %s\n", fname);
       return -1;
   }
   
-  MD5_CTX md5_ctx;
-  MD5_Init(&md5_ctx);
+  SHA_CTX sha1_ctx;
+  SHA1_Init(&sha1_ctx);
   
   unsigned char buffer[1024];
   size_t bytes_read;
   
   while ((bytes_read = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-      MD5_Update(&md5_ctx, buffer, bytes_read);
+      SHA1_Update(&sha1_ctx, buffer, bytes_read);
   }
   
-  MD5_Final(md5, &md5_ctx);
+  SHA1_Final(sha1, &sha1_ctx);
   fclose(file);
   
   return 0;
 
 }
 
-
-
-
+/* Append new test case to the queue. */
 static void add_to_queue(u8* fname, u32 len, u8 passed_det) {
 
   struct queue_entry* q = ck_alloc(sizeof(struct queue_entry));
@@ -839,7 +835,7 @@ static void add_to_queue(u8* fname, u32 len, u8 passed_det) {
   q->len          = len;
   q->depth        = cur_depth + 1;
   q->passed_det   = passed_det;
-  calculate_file_md5(fname, q->file_checksum);
+  calculate_file_sha1(fname, q->file_checksum);
   q->fuzz_times_since_last_interest = 0;
 
   if (q->depth > max_depth) max_depth = q->depth;
@@ -4674,26 +4670,23 @@ abort_trimming:
 
 }
 
+static void sha1_hash(const char *str, u32 len, char *sha1_str) {
+    unsigned char digest[SHA_DIGEST_LENGTH];
+    SHA_CTX ctx;
+    SHA1_Init(&ctx);
+    SHA1_Update(&ctx, str, len);
+    SHA1_Final(digest, &ctx);
+
+    // 将 MD5 结果转换为十六进制字符串
+    for(int i = 0; i < SHA_DIGEST_LENGTH; i++) {
+        sprintf(&sha1_str[i*2], "%02x", (unsigned int)digest[i]);
+    }
+    sha1_str[40] = '\0';
+}
 
 /* Write a modified test case, run program, process results. Handle
    error conditions, returning 1 if it's time to bail out. This is
    a helper function for fuzz_one(). */
-
-void md5_hash(const char *str, u32 len, char *md5_str) {
-    unsigned char digest[MD5_DIGEST_LENGTH];
-    MD5_CTX ctx;
-    MD5_Init(&ctx);
-    MD5_Update(&ctx, str, len);
-    MD5_Final(digest, &ctx);
-
-    // 将 MD5 结果转换为十六进制字符串
-    for(int i = 0; i < MD5_DIGEST_LENGTH; i++) {
-        sprintf(&md5_str[i*2], "%02x", (unsigned int)digest[i]);
-    }
-    md5_str[32] = '\0';
-}
-
-
 EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
 
   u8 fault;
@@ -4737,13 +4730,16 @@ EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
   queued_discovered += saved;
 
   if (saved) {
-    u8 old_md5_string[MD5_DIGEST_LENGTH * 2 + 1] = { 0 };
-    for (u32 i = 0; i < MD5_DIGEST_LENGTH; i++) {
+    u8 old_md5_string[SHA_DIGEST_LENGTH * 2 + 1] = { 0 };
+    for (u32 i = 0; i < SHA_DIGEST_LENGTH; i++) {
       sprintf(old_md5_string + i * 2, "%02x", queue_cur->file_checksum[i]);
     }
-    u8 new_md5_string[MD5_DIGEST_LENGTH * 2 + 1] = { 0 };
-    md5_hash(out_buf, len, new_md5_string);
-    GrubF("MD5=%s find new interests after %d tries, New MD5=%s.", old_md5_string, queue_cur->fuzz_times_since_last_interest, new_md5_string);
+    u8 new_md5_string[SHA_DIGEST_LENGTH * 2 + 1] = { 0 };
+    sha1_hash(out_buf, len, new_md5_string);
+    GrubF("SHA1=%s find new interests after %d tries, New SHA1=%s.", 
+      old_md5_string, 
+      queue_cur->fuzz_times_since_last_interest, 
+      new_md5_string);
     queue_cur->fuzz_times_since_last_interest = 0;
   }  
 
