@@ -88,6 +88,7 @@
 #  define EXP_ST static
 #endif /* ^AFL_LIB */
 
+
 /* Lots of globals, but mostly for the status UI and other things where it
    really makes no sense to haul them around as function parameters. */
 
@@ -4684,6 +4685,18 @@ static void sha1_hash(const char *str, u32 len, char *sha1_str) {
     sha1_str[40] = '\0';
 }
 
+static void FluentF(char* str) {
+	char* url = getenv("FLUENT_URL");
+	if (!url) return;
+	static char buffer[2048];
+	sprintf(buffer, 
+			"curl -X POST -H \"Content-Type: application/json\" -d \'%s\' %s",
+			str, url);
+	// GrubF("%s", buffer);
+	system(buffer);
+
+}
+
 /* Write a modified test case, run program, process results. Handle
    error conditions, returning 1 if it's time to bail out. This is
    a helper function for fuzz_one(). */
@@ -4730,18 +4743,25 @@ EXP_ST u8 common_fuzz_stuff(char** argv, u8* out_buf, u32 len) {
   queued_discovered += saved;
 
   if (saved) {
-    u8 old_md5_string[SHA_DIGEST_LENGTH * 2 + 1] = { 0 };
+    u8 old_md5_string[SHA_DIGEST_LENGTH * 2 + 1] = {0};
     for (u32 i = 0; i < SHA_DIGEST_LENGTH; i++) {
       sprintf(old_md5_string + i * 2, "%02x", queue_cur->file_checksum[i]);
     }
-    u8 new_md5_string[SHA_DIGEST_LENGTH * 2 + 1] = { 0 };
+    u8 new_md5_string[SHA_DIGEST_LENGTH * 2 + 1] = {0};
     sha1_hash(out_buf, len, new_md5_string);
-    GrubF("SHA1=%s find new interests after %d tries, New SHA1=%s.", 
-      old_md5_string, 
-      queue_cur->fuzz_times_since_last_interest, 
-      new_md5_string);
+
+    GrubF("SHA1=%s find new interests after %d tries, New SHA1=%s.",
+          old_md5_string,
+          queue_cur->fuzz_times_since_last_interest,
+          new_md5_string);
+    char buffer[2048];
+    sprintf(buffer,
+            "{\"fuzzer\": \"AFL\", \"old\": \"%s\", \"new\": \"%s\", "
+            "\"tries\": \"%d\"}",
+            old_md5_string, new_md5_string, queue_cur->fuzz_times_since_last_interest);
+    FluentF(buffer);
     queue_cur->fuzz_times_since_last_interest = 0;
-  }  
+  }
 
   if (!(stage_cur % stats_update_freq) || stage_cur + 1 == stage_max)
     show_stats();
