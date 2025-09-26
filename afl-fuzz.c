@@ -266,7 +266,7 @@ struct queue_entry {
 
   u8  file_checksum[SHA_DIGEST_LENGTH];
   u32 fuzz_times_since_last_interest;
-  u32 fuzz_times_total;
+  u64 fuzz_times_total;
 
   struct queue_entry *next,           /* Next element, if any             */
                      *next_100;       /* 100 elements ahead               */
@@ -8166,7 +8166,7 @@ int main(int argc, char** argv) {
     if (stop_soon) goto stop_fuzzing;
   }
 
-  clock_t  start_time = clock();
+  u64 last_log_time = get_cur_time();
 
   while (1) {
 
@@ -8226,8 +8226,9 @@ int main(int argc, char** argv) {
     queue_cur = queue_cur->next;
     current_entry++;
 
-    clock_t cur_time = clock();
-    double passed_minutes = (double)(cur_time - start_time) / CLOCKS_PER_SEC / 60.0;
+    u64 cur_time = get_cur_time();
+    double passed_minutes = (double)(cur_time - last_log_time) / 1000.0 / 60.0;
+    GrubF("%f\n", passed_minutes);
     if (passed_minutes > 30.0) {
       for (struct queue_entry *q = queue; q; q = q->next) {
         u8 sha1_string[SHA_DIGEST_LENGTH * 2 + 1] = {0};
@@ -8236,12 +8237,12 @@ int main(int argc, char** argv) {
         }
         static char buffer[2048];
         sprintf(buffer,
-                "{\"fuzzer\": \"AFL\", \"sha\": \"%s\", \"tries\": %d}",
+                "{\"fuzzer\": \"AFL\", \"sha\": \"%s\", \"tries\": %ld}",
                 sha1_string, q->fuzz_times_total
         );
         FluentF(buffer);
-        start_time = cur_time;
       }
+      last_log_time = cur_time;
     }
 
   }
