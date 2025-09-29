@@ -8237,7 +8237,7 @@ int main(int argc, char** argv) {
         }
         static char buffer[2048];
         sprintf(buffer,
-                "{\"fuzzer\": \"AFL\", \"sha\": \"%s\", \"tries\": %ld}",
+                "{\"fuzzer\": \"AFL\", \"sha\": \"%s\", \"tries\": %llu}",
                 sha1_string, q->fuzz_times_total
         );
         FluentF(buffer);
